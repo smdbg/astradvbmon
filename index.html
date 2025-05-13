@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Live Stacked Bitrate Charts</title>
+  <title>ASTRA TP MON</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="scripts/chart.umd.min.js"></script>
   <script src="scripts/luxon@3"></script>
@@ -184,7 +184,8 @@ async function fetchData() {
         data: points,
         fill: true,
         tension: 0,
-        borderWidth: 1
+        borderWidth: 1,
+        pointRadius: 0
       }));
 
       chart.update();
