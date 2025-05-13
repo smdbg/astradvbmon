@@ -88,7 +88,8 @@ groups.forEach(group => {
       animation: { duration: 0 },
       plugins: {
         title: { display: true, text: group + ' Stacked Bitrate (kbps)' },
-        legend: { position: 'bottom', labels: { boxWidth: 10 } }
+        legend: { position: 'bottom', labels: { boxWidth: 10 } },
+        tooltip: { reverse: true }
       },
       scales: {
         x: {
