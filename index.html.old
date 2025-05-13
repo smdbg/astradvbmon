@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Stacked Bitrate Charts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Chart.js core -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Luxon time adapter for Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 1em;
+      margin: 0;
+      background: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+    }
+    .chart-block {
+      margin-bottom: 50px;
+    }
+    canvas {
+      width: 100% !important;
+      height: 400px !important;
+    }
+    button {
+      display: block;
+      margin: 0 auto 20px auto;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Live Stacked Bitrate Graphs</h1>
+<button onclick="stopUpdates()">🛑 Stop Updating</button>
+
+<div class="chart-block"><canvas id="chart_TP1"></canvas></div>
+<div class="chart-block"><canvas id="chart_TP2"></canvas></div>
+<div class="chart-block"><canvas id="chart_TP3"></canvas></div>
+
+<script>
+const groups = ['TP1', 'TP2', 'TP3'];
+const charts = {};
+const dataHistory = { TP1: {}, TP2: {}, TP3: {} };
+const maxPoints = 120;
+let updateInterval = null;
+
+groups.forEach(group => {
+  const ctx = document.getElementById('chart_' + group);
+  charts[group] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: []
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      stacked: true,
+      animation: {
+        duration: 0  // No animation
+      },
+      plugins: {
+        title: {
+          display: true,
+          text: group + ' Stacked Bitrate (kbps)'
+        },
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 10 }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'second', tooltipFormat: 'HH:mm:ss' },
+          title: { display: true, text: 'Time' }
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          title: { display: true, text: 'Bitrate (kbps)' }
+        }
+      }
+    }
+  });
+});
+
+async function fetchData() {
+  try {
+    const res = await fetch('data.php');
+    const json = await res.json();
+    const now = new Date();
+
+    for (const group of groups) {
+      const streams = json[group] || [];
+      const history = dataHistory[group];
+
+      streams.forEach(stream => {
+        const name = stream.name;
+        if (!history[name]) history[name] = [];
+        history[name].push({ x: now, y: stream.bitrate });
+
+        if (history[name].length > maxPoints) {
+          history[name].shift();
+        }
+      });
+
+      // Remove datasets for streams no longer active
+      for (let name in history) {
+        if (!streams.find(s => s.name === name)) {
+          delete history[name];
+        }
+      }
+
+      // Update chart datasets
+charts[group].data.datasets = Object.entries(history).map(([name, points]) => ({
+  label: name,
+  data: points,
+  fill: true,
+  tension: 0,
+  borderWidth: 1
+}));
+
+      charts[group].update();
+    }
+  } catch (err) {
+    console.error("Fetch or chart update error:", err);
+  }
+}
+
+function stopUpdates() {
+  if (updateInterval !== null) {
+    clearInterval(updateInterval);
+    updateInterval = null;
+    alert("Live updates stopped.");
+  }
+}
+
+// Start fetching data every second
+updateInterval = setInterval(fetchData, 1000);
+fetchData(); // First call
+</script>
+
+</body>
+</html>

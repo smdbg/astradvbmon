@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Stacked Bitrate Charts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 1em;
+      margin: 0;
+      background: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+    }
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .chart-block {
+      margin-bottom: 50px;
+    }
+    canvas {
+      width: 100% !important;
+      height: 400px !important;
+    }
+    button {
+      display: block;
+      margin: 0 auto 20px auto;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Live Stacked Bitrate Graphs</h1>
+
+<div class="controls">
+  <label><strong>Select Group:</strong></label>
+  <select id="groupSelector" onchange="updateChartVisibility()" style="margin-right: 20px; font-size: 16px; padding: 5px;">
+    <option value="all">All TPs</option>
+    <option value="TP1">TP1</option>
+    <option value="TP2">TP2</option>
+    <option value="TP3">TP3</option>
+  </select>
+
+  <label><strong>Update Interval:</strong></label>
+  <select id="intervalSelector" onchange="changeUpdateInterval()" style="font-size: 16px; padding: 5px;">
+    <option value="1000">1000 ms</option>
+    <option value="500">500 ms</option>
+    <option value="300">300 ms</option>
+  </select>
+</div>
+
+<button onclick="stopUpdates()">🛑 Stop Updating</button>
+
+<div class="chart-block"><canvas id="chart_TP1"></canvas></div>
+<div class="chart-block"><canvas id="chart_TP2"></canvas></div>
+<div class="chart-block"><canvas id="chart_TP3"></canvas></div>
+
+<script>
+const groups = ['TP1', 'TP2', 'TP3'];
+const charts = {};
+const dataHistory = { TP1: {}, TP2: {}, TP3: {} };
+const maxPoints = 120;
+let updateInterval = null;
+
+// Initialize all charts
+groups.forEach(group => {
+  const ctx = document.getElementById('chart_' + group);
+  charts[group] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: []
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      stacked: true,
+      animation: { duration: 0 },
+      plugins: {
+        title: { display: true, text: group + ' Stacked Bitrate (kbps)' },
+        legend: { position: 'bottom', labels: { boxWidth: 10 } }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'second', tooltipFormat: 'HH:mm:ss' },
+          title: { display: true, text: 'Time' }
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          title: { display: true, text: 'Bitrate (kbps)' }
+        }
+      }
+    }
+  });
+});
+
+// Reset all chart data and clear visuals
+function resetGraphs() {
+  for (const group of groups) {
+    dataHistory[group] = {};
+    charts[group].data.datasets = [];
+    charts[group].update();
+  }
+}
+
+// Show/hide charts by selected group
+function updateChartVisibility() {
+  const selected = document.getElementById('groupSelector').value;
+  resetGraphs();
+  groups.forEach(group => {
+    const block = document.getElementById('chart_' + group).parentElement;
+    block.style.display = (selected === 'all' || selected === group) ? 'block' : 'none';
+  });
+}
+
+// Change fetch interval and reset
+function changeUpdateInterval() {
+  const newInterval = parseInt(document.getElementById('intervalSelector').value);
+  if (updateInterval !== null) {
+    clearInterval(updateInterval);
+    resetGraphs();
+    updateInterval = setInterval(fetchData, newInterval);
+  }
+}
+
+// Stop data updates
+function stopUpdates() {
+  if (updateInterval !== null) {
+    clearInterval(updateInterval);
+    updateInterval = null;
+    alert("Live updates stopped.");
+  }
+}
+
+// Fetch data and update graphs
+async function fetchData() {
+  try {
+    const selectedGroup = document.getElementById('groupSelector').value;
+    const res = await fetch('data.php?group=' + selectedGroup);
+    const json = await res.json();
+    const now = new Date();
+
+    for (const group of groups) {
+      const chart = charts[group];
+      const streams = json[group] || [];
+
+      // Only process selected group(s)
+      if (selectedGroup !== 'all' && selectedGroup !== group) {
+        chart.data.datasets = [];
+        chart.update();
+        continue;
+      }
+
+      const history = dataHistory[group];
+      streams.forEach(stream => {
+        const name = stream.name;
+        if (!history[name]) history[name] = [];
+        history[name].push({ x: now, y: stream.bitrate });
+        if (history[name].length > maxPoints) {
+          history[name].shift();
+        }
+      });
+
+      for (let name in history) {
+        if (!streams.find(s => s.name === name)) {
+          delete history[name];
+        }
+      }
+
+      chart.data.datasets = Object.entries(history).map(([name, points]) => ({
+        label: name,
+        data: points,
+        fill: true,
+        tension: 0,
+        borderWidth: 1
+      }));
+
+      chart.update();
+    }
+  } catch (err) {
+    console.error("Fetch or chart update error:", err);
+  }
+}
+
+// Start
+updateInterval = setInterval(fetchData, parseInt(document.getElementById('intervalSelector').value));
+fetchData();
+updateChartVisibility();
+</script>
+
+</body>
+</html>

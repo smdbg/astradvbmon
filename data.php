@@ -1,0 +1,46 @@
+<?php
+
+header('Content-Type: application/json');
+
+// Load .env
+$env = parse_ini_file(__DIR__ . '/.env');
+$USERNAME = $env['USERNAME'];
+$PASSWORD = $env['PASSWORD'];
+
+$API_URL = 'http://127.0.0.1:8000/api/stream-status/%s?t=0';
+
+$stream_groups = [
+    "TP1" => ["10006", "10012", "10010", "10014", "10017", "10020", "10023", "10027", "a0g3"],
+    "TP2" => ["10022", "10008", "10011", "10007", "10013", "10002", "10003", "10004", "10001"],
+    "TP3" => ["10015", "10009", "10016", "10018", "10019", "10021", "10024", "10025", "10026", "10005"]
+];
+
+$selectedGroup = $_GET['group'] ?? 'all';
+
+$data = [];
+
+$targetGroups = ($selectedGroup === 'all') ? $stream_groups : [$selectedGroup => $stream_groups[$selectedGroup] ?? []];
+
+foreach ($targetGroups as $group => $ids) {
+    foreach ($ids as $id) {
+        $url = sprintf($API_URL, $id);
+        $opts = [
+            "http" => [
+                "header" => "Authorization: Basic " . base64_encode("$USERNAME:$PASSWORD")
+            ]
+        ];
+        $context = stream_context_create($opts);
+        $json = @file_get_contents($url, false, $context);
+        if ($json) {
+            $info = json_decode($json, true);
+            if ($info["active"] && $info["onair"]) {
+                $data[$group][] = [
+                    "name" => $info["name"],
+                    "bitrate" => $info["bitrate"]
+                ];
+            }
+        }
+    }
+}
+
+echo json_encode($data);
